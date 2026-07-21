@@ -177,7 +177,7 @@ func TestMemoryBackend_ConcurrentAccess(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			key := fmt.Sprintf("key-%d", i)
-			data := []byte(fmt.Sprintf("value-%d", i))
+			data := fmt.Appendf(nil, "value-%d", i)
 			if err := b.Put(key, bytes.NewReader(data)); err != nil {
 				t.Errorf("Put(%q) failed: %v", key, err)
 			}
