@@ -34,6 +34,7 @@ type StorageBackend interface {
 	Delete(key string) error
 
 	// List returns all keys with the given prefix, in lexicographical
-	// order. An empty prefix matches all keys.
+	// order. An empty prefix matches all keys. A no match is returned
+	// as empty slice.
 	List(prefix string) ([]string, error)
 }
