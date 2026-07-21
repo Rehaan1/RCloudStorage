@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"io"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -19,8 +21,6 @@ func NewMemoryBackend() *MemoryBackend {
 	return &MemoryBackend{data: make(map[string][]byte)}
 }
 
-// Put is the Implementation of the StorageBackend Interface
-// Put function.
 func (m *MemoryBackend) Put(key string, data io.Reader) error {
 	// NOTE@mazidrehaan: We do not take lock here as
 	// reading data (aka upload) might take time and we
@@ -39,8 +39,6 @@ func (m *MemoryBackend) Put(key string, data io.Reader) error {
 	return nil
 }
 
-// Get is the Implementation of the StorageBackend Interface
-// Get function.
 func (m *MemoryBackend) Get(key string) (io.ReadCloser, error) {
 
 	// Take read lock
@@ -56,8 +54,6 @@ func (m *MemoryBackend) Get(key string) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(buf)), nil
 }
 
-// Delete is the Implementation of the StorageBackend Interface
-// Delete function.
 func (m *MemoryBackend) Delete(key string) error {
 
 	m.mu.Lock()
@@ -69,6 +65,19 @@ func (m *MemoryBackend) Delete(key string) error {
 }
 
 func (m *MemoryBackend) List(prefix string) ([]string, error) {
-	// @TODO
-	return nil, nil
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	keys := make([]string, 0)
+
+	for k := range m.data {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+
+	sort.Strings(keys)
+
+	return keys, nil
 }
