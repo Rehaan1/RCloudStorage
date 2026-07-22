@@ -13,11 +13,14 @@ import (
 // be one Service. There will not be flavors of
 // Service like MemoryService, DiskService, etc.
 
-// Service composes of a StorageBackend that handles
-// the storing of data based on the implementation
-// (memory, disk, etc) and the MetadataStore which
-// handles the storing of metadata for the data
-// based on the implementation.
+// Service is a thin layer that recieves request
+// to store or get the data. It composes of a
+// StorageBackend that handles the storing of data
+// and the MetadataStore which handles the storing
+// of metadata for the data based on the
+// implementation. The caller only needs to provide
+// the key and data and not worry about metadata
+// store and backend and other lower level implementation.
 type Service struct {
 	Backend  storage.StorageBackend
 	Metadata storage.MetadataStore
@@ -32,6 +35,14 @@ func New(backend storage.StorageBackend, metadata storage.MetadataStore) *Servic
 
 func (s *Service) Put(key string, data []byte) error {
 
+	// NOTE@mazidrehaan: Use of byte here is only
+	// a design simplification for phase 1 implementation.
+	// A large file (10 GB example) would bloat up the
+	// memory.
+
+	// TODO@mazidrehaan: Replace in-memory byte with
+	// streaming friendly version to support large
+	// files.
 	now := time.Now()
 
 	sniffLen := 512
