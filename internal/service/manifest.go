@@ -88,6 +88,9 @@ func (s *Service) PutLarge(key string, r io.Reader) error {
 			totalSize += int64(n)
 		}
 
+		// ErrUnexepectedEOF is used as if last chunk is not exact
+		// size of ChunkSize it would return this while reading
+		// the bytes into n.
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			break
 		}
