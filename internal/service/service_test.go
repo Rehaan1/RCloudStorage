@@ -9,7 +9,7 @@ import (
 func TestService_PutGet_RoundTrip(t *testing.T) {
 	backend := storage.NewMemoryBackend()
 	metaStore := storage.NewMemoryMetadataStore()
-	svc := New(backend, metaStore)
+	svc := New(backend, metaStore, 4*1024*1024)
 
 	data := []byte("hello, world")
 	if err := svc.Put("greeting", data); err != nil {
