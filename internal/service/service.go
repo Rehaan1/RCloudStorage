@@ -22,14 +22,16 @@ import (
 // the key and data and not worry about metadata
 // store and backend and other lower level implementation.
 type Service struct {
-	Backend  storage.StorageBackend
-	Metadata storage.MetadataStore
+	Backend   storage.StorageBackend
+	Metadata  storage.MetadataStore
+	ChunkSize int64
 }
 
-func New(backend storage.StorageBackend, metadata storage.MetadataStore) *Service {
+func New(backend storage.StorageBackend, metadata storage.MetadataStore, chunkSize int64) *Service {
 	return &Service{
-		Backend:  backend,
-		Metadata: metadata,
+		Backend:   backend,
+		Metadata:  metadata,
+		ChunkSize: chunkSize,
 	}
 }
 
