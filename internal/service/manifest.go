@@ -65,12 +65,18 @@ func (m *multiReadCloser) Close() error {
 	return firstErr
 }
 
+// NOTE@mazidrehaan: We are keeping PutLarge and GetLarge in manifest.go
+// instead of service.go as this uses manifest approach and its related
+// to the Manifest and ChunkRef both of which exists in this file.
+// In Go we should keep what references and is used together.
+
 // PutLarge stores data in chunks of s.ChunkSize, writing every chunk
 // to the backend before ever writing the manifest. The manifest is
 // written last and is what makes the object visible to GetLarge.
 func (s *Service) PutLarge(key string, r io.Reader) error {
 
 	var chunks []ChunkRef
+	// This allows hashing incremently
 	overallHash := sha256.New()
 
 	var totalSize int64
