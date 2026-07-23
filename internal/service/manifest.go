@@ -47,6 +47,24 @@ func manifestAsReader(m Manifest) (io.Reader, error) {
 	return bytes.NewReader(data), nil
 }
 
+// multiReadCloser adapts io.MultiReader's plain io.Reader into an
+// io.ReadCloser, closing every underlying chunk reader on Close.
+type multiReadCloser struct {
+	io.Reader
+	closers []io.Closer
+}
+
+// Close creates a custom Close function for multiReadCloser
+func (m *multiReadCloser) Close() error {
+	var firstErr error
+	for _, c := range m.closers {
+		if err := c.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // PutLarge stores data in chunks of s.ChunkSize, writing every chunk
 // to the backend before ever writing the manifest. The manifest is
 // written last and is what makes the object visible to GetLarge.
@@ -118,4 +136,46 @@ func (s *Service) PutLarge(key string, r io.Reader) error {
 	// which contains the ordered list of all the Chunks and
 	// its key to fetch from the Backend
 	return s.Backend.Put(manifestKey(key), manifestReader)
+}
+
+// GetLarge returns a stream of a chunked object's bytes and its manifest.
+func (s *Service) GetLarge(key string) (io.ReadCloser, Manifest, error) {
+
+	// Get the manifest
+	manifestKey := manifestKey(key)
+
+	manifestRecord, err := s.Backend.Get(manifestKey)
+	if err != nil {
+		return nil, Manifest{}, err
+	}
+	defer manifestRecord.Close()
+
+	manifestBytes, err := io.ReadAll(manifestRecord)
+	if err != nil {
+		return nil, Manifest{}, fmt.Errorf("reading manifest: %w", err)
+	}
+
+	var manifest Manifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return nil, Manifest{}, fmt.Errorf("decoding manifest: %w", err)
+	}
+
+	readers := make([]io.Reader, len(manifest.Chunks))
+	closers := make([]io.Closer, len(manifest.Chunks))
+
+	// Get Readers for chunks in the manifest
+	for i, ref := range manifest.Chunks {
+
+		record, err := s.Backend.Get(ref.Key)
+		if err != nil {
+			return nil, Manifest{}, fmt.Errorf("fetching chunk %d: %w", i, err)
+		}
+		readers[i] = record
+		closers[i] = record
+	}
+
+	return &multiReadCloser{
+		Reader:  io.MultiReader(readers...),
+		closers: closers,
+	}, manifest, nil
 }
