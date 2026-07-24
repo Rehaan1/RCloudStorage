@@ -20,6 +20,8 @@ func NewRouter(svc *service.Service) http.Handler {
 
 	mux.Handle("GET /objects/{key}", handleGet(svc))
 	mux.HandleFunc("PUT /objects/{key}", handlePut(svc))
+
+	// TODO@mazidrehaan: Complete the DELETE And PUT
 	//mux.Handle("DELETE /objects/{key}", handleDelete(svc))
 	//mux.HandleFunc("GET /objects", handleList(svc))
 
