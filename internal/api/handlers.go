@@ -8,6 +8,9 @@ import (
 	"strconv"
 )
 
+// handleGet is the api call for smaller files < ChunkSize
+// using the metadataStore compared to the manifest store
+// for larger files.
 func handleGet(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("key")
