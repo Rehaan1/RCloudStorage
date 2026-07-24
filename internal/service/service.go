@@ -1,3 +1,5 @@
+// Service is the common thin client that connects everything.
+// It does not care if the caller is HTTP, gRPC, CLI, etc.
 package service
 
 import (
