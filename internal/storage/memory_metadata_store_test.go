@@ -9,11 +9,8 @@ import (
 func TestMemoryMetadataStore_PutGet(t *testing.T) {
 	s := storage.NewMemoryMetadataStore()
 	m := storage.Metadata{
-		Key:         "foo",
-		Size:        42,
-		ContentType: "text/plain",
-		CreatedAt:   time.Now(),
-		ModifiedAt:  time.Now(),
+		CreatedAt:  time.Now(),
+		ModifiedAt: time.Now(),
 	}
 
 	if err := s.Put("foo", m); err != nil {
@@ -39,7 +36,7 @@ func TestMemoryMetadataStore_GetMissing(t *testing.T) {
 
 func TestMemoryMetadataStore_Delete(t *testing.T) {
 	s := storage.NewMemoryMetadataStore()
-	_ = s.Put("foo", storage.Metadata{Key: "foo"})
+	_ = s.Put("foo", storage.Metadata{})
 	if err := s.Delete("foo"); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}

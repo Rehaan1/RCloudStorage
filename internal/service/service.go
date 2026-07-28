@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"rcloudstorage/internal/storage"
+	"time"
 )
 
 // NOTE@mazidrehaan: Service does not have an
@@ -116,7 +117,23 @@ func (s *Service) Put(key string, r io.Reader) error {
 	// to the manifest which contains the list of ChunkRef
 	// which contains the ordered list of all the Chunks and
 	// its key to fetch from the Backend
-	return s.Backend.Put(manifestKey(key), manifestReader)
+	if err := s.Backend.Put(manifestKey(key), manifestReader); err != nil {
+		return fmt.Errorf("writing manifest: %w", err)
+	}
+
+	created := time.Now()
+
+	// TODO@mazidrehaan: This assumes all errors are ErrNotFound,
+	// but with disk storage it could be anything. Handle that
+	// in the future.
+	if existing, err := s.Metadata.Get(key); err == nil {
+		created = existing.CreatedAt
+	}
+
+	return s.Metadata.Put(key, storage.Metadata{
+		CreatedAt:  created,
+		ModifiedAt: time.Now(),
+	})
 }
 
 // GetLarge returns a stream of a chunked object's bytes and its manifest.
