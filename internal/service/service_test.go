@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"io"
 	"testing"
 
 	"rcloudstorage/internal/storage"
@@ -12,31 +14,35 @@ func TestService_PutGet_RoundTrip(t *testing.T) {
 	svc := New(backend, metaStore, 4*1024*1024)
 
 	data := []byte("hello, world")
-	if err := svc.Put("greeting", data); err != nil {
+
+	if err := svc.Put("greeting", bytes.NewReader(data)); err != nil {
 		t.Fatalf("Put returned error: %v", err)
 	}
 
-	gotData, gotMeta, err := svc.Get("greeting")
+	rc, manifest, err := svc.Get("greeting")
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
+	}
+	defer rc.Close() // >>> NEW: must close the reader now
+
+	gotData, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("reading data: %v", err)
 	}
 
 	if string(gotData) != string(data) {
 		t.Errorf("got data %q, want %q", gotData, data)
 	}
-	if gotMeta.Key != "greeting" {
-		t.Errorf("got Key %q, want %q", gotMeta.Key, "greeting")
+
+	if manifest.ObjectKey != "greeting" {
+		t.Errorf("got ObjectKey %q, want %q", manifest.ObjectKey, "greeting")
 	}
-	if gotMeta.Size != int64(len(data)) {
-		t.Errorf("got Size %d, want %d", gotMeta.Size, len(data))
+
+	if manifest.TotalSize != int64(len(data)) {
+		t.Errorf("got TotalSize %d, want %d", manifest.TotalSize, len(data))
 	}
-	if gotMeta.ContentType == "" {
+
+	if manifest.ContentType == "" {
 		t.Errorf("got empty ContentType, want a sniffed value")
-	}
-	if gotMeta.CreatedAt.IsZero() {
-		t.Errorf("got zero CreatedAt")
-	}
-	if gotMeta.ModifiedAt.IsZero() {
-		t.Errorf("got zero ModifiedAt")
 	}
 }

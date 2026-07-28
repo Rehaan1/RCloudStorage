@@ -16,7 +16,7 @@ func handleGet(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("key")
 
-		data, meta, err := svc.Get(key)
+		data, manifest, err := svc.Get(key)
 
 		switch {
 		case errors.Is(err, storage.ErrNotFound):
@@ -28,9 +28,14 @@ func handleGet(svc *service.Service) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", meta.ContentType)
-		w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
-		w.Write(data)
+		w.Header().Set("Content-Type", manifest.ContentType)
+		w.Header().Set("Content-Length", strconv.FormatInt(manifest.TotalSize, 10))
+		if _, err := io.Copy(w, data); err != nil {
+			// headers are already sent at this point, so we can't call
+			// http.Error here — just log it server-side
+			// (add a logger later; for now this is a known gap)
+			return
+		}
 	}
 }
 
@@ -41,14 +46,7 @@ func handlePut(svc *service.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("key")
 
-		data, err := io.ReadAll(r.Body)
-
-		if err != nil {
-			http.Error(w, "read failed", http.StatusBadRequest)
-			return
-		}
-
-		if err := svc.Put(key, data); err != nil {
+		if err := svc.Put(key, r.Body); err != nil {
 			http.Error(w, "write failed", http.StatusInternalServerError)
 			return
 		}
