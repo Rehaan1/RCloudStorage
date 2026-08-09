@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -79,6 +80,55 @@ func TestService_Get_SucceedsWhenMetadataIsMissing(t *testing.T) {
 
 	if manifest.TotalSize != int64(len(data)) {
 		t.Errorf("got TotalSize %d, want %d", manifest.TotalSize, len(data))
+	}
+}
+
+func TestService_List(t *testing.T) {
+	backend := storage.NewMemoryBackend()
+	metaStore := storage.NewMemoryMetadataStore()
+	svc := New(backend, metaStore, 4*1024*1024)
+
+	for _, key := range []string{"alpha.txt", "photos/a.jpg", "photos/b.jpg"} {
+		if err := svc.Put(key, bytes.NewReader([]byte("x"))); err != nil {
+			t.Fatalf("Put(%q) failed: %v", key, err)
+		}
+	}
+
+	got, err := svc.List("photos/")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+
+	want := []string{"photos/a.jpg", "photos/b.jpg"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("got %q, want %q", got[i], want[i])
+		}
+	}
+}
+
+func TestService_Delete(t *testing.T) {
+	backend := storage.NewMemoryBackend()
+	metaStore := storage.NewMemoryMetadataStore()
+	svc := New(backend, metaStore, 4*1024*1024)
+
+	if err := svc.Put("goodbye.txt", bytes.NewReader([]byte("bye"))); err != nil {
+		t.Fatalf("Put returned error: %v", err)
+	}
+
+	if err := svc.Delete("goodbye.txt"); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+
+	if _, _, err := svc.Get("goodbye.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("Get after Delete returned %v, want ErrNotFound", err)
+	}
+
+	if _, err := metaStore.Get("goodbye.txt"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("metadata Get after Delete returned %v, want ErrNotFound", err)
 	}
 }
 

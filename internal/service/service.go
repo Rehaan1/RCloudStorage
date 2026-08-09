@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"rcloudstorage/internal/storage"
+	"strings"
 	"time"
 )
 
@@ -199,4 +200,60 @@ func (s *Service) Get(key string) (io.ReadCloser, Manifest, error) {
 		Reader:  io.MultiReader(readers...),
 		closers: closers,
 	}, manifest, nil
+}
+
+func (s *Service) List(prefix string) ([]string, error) {
+	keys, err := s.Backend.List(prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	objects := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if strings.HasSuffix(key, "/manifest") {
+			objects = append(objects, strings.TrimSuffix(key, "/manifest"))
+		}
+	}
+
+	return objects, nil
+}
+
+func (s *Service) Delete(key string) error {
+	manifestRecord, err := s.Backend.Get(manifestKey(key))
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return s.Metadata.Delete(key)
+		}
+		return err
+	}
+	defer manifestRecord.Close()
+
+	manifestBytes, err := io.ReadAll(manifestRecord)
+	if err != nil {
+		return fmt.Errorf("reading manifest: %w", err)
+	}
+
+	var manifest Manifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return fmt.Errorf("decoding manifest: %w", err)
+	}
+
+	// TODO@mazidrehaan: In future, perhaps we can think
+	// of a better way to delete and let a GC in the BG
+	// clear up unlinked chunks.
+	for _, ref := range manifest.Chunks {
+		if err := s.Backend.Delete(ref.Key); err != nil {
+			return fmt.Errorf("deleting chunk %q: %w", ref.Key, err)
+		}
+	}
+
+	if err := s.Backend.Delete(manifestKey(key)); err != nil {
+		return fmt.Errorf("deleting manifest: %w", err)
+	}
+
+	if err := s.Metadata.Delete(key); err != nil {
+		return fmt.Errorf("deleting metadata: %w", err)
+	}
+
+	return nil
 }
