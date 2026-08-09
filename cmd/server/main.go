@@ -14,7 +14,7 @@ func main() {
 
 	// ChunkSize is 0 as it is unused until we add
 	// support for streaming of large files
-	svc := service.New(backend, metaStore, 0)
+	svc := service.New(backend, metaStore, 4*1024*1024)
 
 	router := api.NewRouter(svc)
 
