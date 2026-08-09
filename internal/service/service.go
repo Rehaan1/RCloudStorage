@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -168,9 +169,31 @@ func (s *Service) Get(key string) (io.ReadCloser, Manifest, error) {
 		if err != nil {
 			return nil, Manifest{}, fmt.Errorf("fetching chunk %d: %w", i, err)
 		}
-		readers[i] = record
-		closers[i] = record
+
+		chunkBytes, err := io.ReadAll(record)
+		record.Close()
+		if err != nil {
+			return nil, Manifest{}, fmt.Errorf("reading chunk %d: %w", i, err)
+		}
+
+		if err := s.verifyChunk(chunkBytes, ref.Checksum); err != nil {
+			return nil, Manifest{}, err
+		}
+
+		chunkReader := io.NopCloser(bytes.NewReader(chunkBytes))
+
+		readers[i] = chunkReader
+		closers[i] = chunkReader
 	}
+
+	// TODO@mazidrehaan: Complete this later an use metadata for
+	// other info
+	meta, err := s.Metadata.Get(key)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, Manifest{}, err
+	}
+
+	_ = meta
 
 	return &multiReadCloser{
 		Reader:  io.MultiReader(readers...),

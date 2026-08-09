@@ -2,6 +2,8 @@ package service
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,6 +46,15 @@ func manifestAsReader(m Manifest) (io.Reader, error) {
 	}
 
 	return bytes.NewReader(data), nil
+}
+
+func (s *Service) verifyChunk(data []byte, want string) error {
+	sum := sha256.Sum256(data)
+	got := hex.EncodeToString(sum[:])
+	if got != want {
+		return fmt.Errorf("chunk integrity check faled: got %s want %s", got, want)
+	}
+	return nil
 }
 
 // multiReadCloser adapts io.MultiReader's plain io.Reader into an
