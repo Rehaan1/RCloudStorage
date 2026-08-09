@@ -6,12 +6,8 @@ import "time"
 // It is persisted seperately from the objectsb bytes -
 // see MetadataStore.
 type Metadata struct {
-	Key         string
-	Size        int64
-	ContentType string
-	Checksum    string
-	CreatedAt   time.Time
-	ModifiedAt  time.Time
+	CreatedAt  time.Time
+	ModifiedAt time.Time
 }
 
 // MetadataStore persists Metadata, keyed the same way as

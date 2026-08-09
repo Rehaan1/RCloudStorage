@@ -1,10 +1,10 @@
 package service
 
 import (
-	"bytes"
+	"bytes" // >>> ADDED: needed for bytes.NewReader / bytes.Repeat, was missing
 	"errors"
 	"io"
-	"testing"
+	"testing" // >>> ADDED: needed for *testing.T, was missing
 
 	"rcloudstorage/internal/storage"
 )
@@ -30,19 +30,48 @@ func (f *failingBackend) Put(key string, data io.Reader) error {
 	return f.StorageBackend.Put(key, data)
 }
 
-func TestService_PutLarge_GetLarge_RoundTrip(t *testing.T) {
+type corruptingBackend struct {
+	storage.StorageBackend
+	corruptKey string
+}
+
+func (c *corruptingBackend) Get(key string) (io.ReadCloser, error) {
+	rc, err := c.StorageBackend.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if key != c.corruptKey {
+		return rc, nil
+	}
+
+	data, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) > 0 {
+		data[0] ^= 0xFF
+	}
+
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func TestService_PutGet_ChunkedRoundTrip(t *testing.T) {
 	backend := storage.NewMemoryBackend()
 	metaStore := storage.NewMemoryMetadataStore()
 	svc := New(backend, metaStore, 4) // tiny chunk size to force many chunks
 
 	data := []byte("this input is well over three chunks of test data")
-	if err := svc.PutLarge("bigfile", bytes.NewReader(data)); err != nil {
-		t.Fatalf("PutLarge returned error: %v", err)
+
+	if err := svc.Put("bigfile", bytes.NewReader(data)); err != nil {
+		t.Fatalf("Put returned error: %v", err)
 	}
 
-	rc, manifest, err := svc.GetLarge("bigfile")
+	rc, manifest, err := svc.Get("bigfile")
 	if err != nil {
-		t.Fatalf("GetLarge returned error: %v", err)
+		t.Fatalf("Get returned error: %v", err)
 	}
 	defer rc.Close()
 
@@ -61,7 +90,7 @@ func TestService_PutLarge_GetLarge_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestService_PutLarge_FailurePartway_NoManifest(t *testing.T) {
+func TestService_Put_FailurePartway_NoManifest(t *testing.T) {
 	backend := &failingBackend{
 		StorageBackend: storage.NewMemoryBackend(),
 		failOnCall:     3, // fail writing the 3rd chunk
@@ -70,11 +99,31 @@ func TestService_PutLarge_FailurePartway_NoManifest(t *testing.T) {
 	svc := New(backend, metaStore, 4)
 
 	data := bytes.Repeat([]byte("x"), 20) // 5 chunks at chunk size 4
-	if err := svc.PutLarge("bigfile", bytes.NewReader(data)); err == nil {
-		t.Fatal("expected PutLarge to return an error, got nil")
+
+	if err := svc.Put("bigfile", bytes.NewReader(data)); err == nil {
+		t.Fatal("expected Put to return an error, got nil")
 	}
 
-	if _, _, err := svc.GetLarge("bigfile"); !errors.Is(err, storage.ErrNotFound) {
+	if _, _, err := svc.Get("bigfile"); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("got error %v, want ErrNotFound", err)
 	}
 }
+
+func TestService_Get_DetectsCorruptedChunk(t *testing.T) {
+	wrapped := &corruptingBackend{
+		StorageBackend: storage.NewMemoryBackend(),
+		corruptKey:     "bigfile/chunks/0",
+	}
+	metaStore := storage.NewMemoryMetadataStore()
+	svc := New(wrapped, metaStore, 4)
+
+	data := []byte("this input is well over three chunks of test data")
+	if err := svc.Put("bigfile", bytes.NewReader(data)); err != nil {
+		t.Fatalf("Put returned error: %v", err)
+	}
+
+	if _, _, err := svc.Get("bigfile"); err == nil {
+		t.Fatal("expected Get to fail when a chunk is corrupted")
+	}
+}
+

@@ -13,7 +13,7 @@ import (
 func newTestService() *service.Service {
 	backend := storage.NewMemoryBackend()
 	metaStore := storage.NewMemoryMetadataStore()
-	return service.New(backend, metaStore, 0)
+	return service.New(backend, metaStore, 4*1024*1024)
 }
 
 func TestHandlePut(t *testing.T) {
@@ -37,7 +37,7 @@ func TestHandleGet(t *testing.T) {
 	// about handleGet, not handlePut, so we don't want a Put
 	// bug (if one existed) to make this test fail for the
 	// wrong reason.
-	if err := svc.Put("test.txt", []byte("hello world")); err != nil {
+	if err := svc.Put("test.txt", strings.NewReader("hello world")); err != nil {
 		t.Fatalf("seed Put failed: %v", err)
 	}
 

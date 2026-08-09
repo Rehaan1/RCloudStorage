@@ -14,10 +14,14 @@ Rather than reaching for an existing solution (Nextcloud, Syncthing, S3, etc.), 
 
 The project is structured in phases, moving from a fully mocked backend to real self-hosted hardware:
 
-- **Phase 1 — V1 (current):** Core functionality (upload, download, list, delete, share links) built against a mocked/in-memory storage backend, sitting behind a storage abstraction interface so the backend can be swapped later without touching the rest of the system.
+- **Phase 1 — V1:** Core functionality (upload, download, list, delete, share links) built against a mocked/in-memory storage backend, sitting behind a storage abstraction interface so the backend can be swapped later without touching the rest of the system.
 - **Phase 2 — Durability & Replication:** Swap the in-memory backend for a real disk-backed one with atomic (temp-file + rename) writes, then run multiple independent node processes coordinated with Dynamo-style quorum replication (N/W/R writes and reads), heartbeat-based failure detection, and anti-entropy recovery — so the system survives a node dying without losing data or needing manual intervention.
 - **Phase 3:** Move off the laptop onto real hardware — a Raspberry Pi with attached external hard disks — replacing the dev-time disk backend behind the same interface.
 - **Phase 4:** Encryption at rest, once the system is expected to hold sensitive files.
+
+## API Documentation
+
+For detailed API endpoint documentation and testing, see: [RCloudStorage API Docs](https://rcloudstorage.docs.buildwithfern.com/)
 
 ## Stack
 
