@@ -19,8 +19,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	
-	metaStore := storage.NewMemoryMetadataStore()
+
+	metaStore, err := storage.NewDiskMetadataStore(*dataDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	svc := service.New(backend, metaStore, 4*1024*1024)
 	router := api.NewRouter(svc)
 	
