@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDiskMetadataStore_PathFor_Sidecar(t *testing.T) {
@@ -34,5 +35,56 @@ func TestDiskMetadataStore_PathFor_RejectsEscape(t *testing.T) {
 	}
 	if _, err := s.pathFor("../outside"); err == nil {
 		t.Fatal("expected error for .. key")
+	}
+}
+
+func TestDiskMetadataStore_PutGet(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewDiskMetadataStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := Metadata{CreatedAt: time.Now(), ModifiedAt: time.Now()}
+
+	if err := s.Put("foo", m); err != nil {
+		t.Fatalf("Put returned error: %v", err)
+	}
+
+	got, err := s.Get("foo")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+
+	if !got.CreatedAt.Equal(m.CreatedAt) || !got.ModifiedAt.Equal(m.ModifiedAt) {
+		t.Errorf("got %+v, want %+v", got, m)
+	}
+}
+
+func TestDiskMetadataStore_GetMissing(t *testing.T) {
+	s, err := NewDiskMetadataStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = s.Get("missing")
+	if err != ErrNotFound {
+		t.Errorf("got error %v, want ErrNotFound", err)
+	}
+}
+
+func TestDiskMetadataStore_Delete(t *testing.T) {
+	s, err := NewDiskMetadataStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_ = s.Put("foo", Metadata{})
+	if err := s.Delete("foo"); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+
+	if _, err := s.Get("foo"); err != ErrNotFound {
+		t.Errorf("got error %v, want ErrNotFound after delete", err)
 	}
 }
