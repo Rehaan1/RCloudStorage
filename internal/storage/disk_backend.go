@@ -103,3 +103,19 @@ func (d *DiskBackend) Put(key string, r io.Reader) error {
 	}
 	return os.Rename(tmpName, finalPath)
 }
+
+func (d *DiskBackend) Get(key string) (io.ReadCloser, error) {
+	path, err := d.pathFor(key)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return f, nil
+}

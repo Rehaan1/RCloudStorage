@@ -2,6 +2,8 @@ package storage
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,5 +92,44 @@ func TestDiskBackend_PutOverwrites(t *testing.T) {
 	}
 	if string(got) != "v2" {
 		t.Fatalf("got %q, want v2", got)
+	}
+}
+
+func TestDiskBackend_PutGet(t *testing.T) {
+	d, err := NewDiskBackend(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key := "photos/cat.jpg/chunks/0"
+	want := []byte("hello disk")
+	if err := d.Put(key, bytes.NewReader(want)); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := d.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	got, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestDiskBackend_GetMissing(t *testing.T) {
+	d, err := NewDiskBackend(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = d.Get("no/such/key")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
