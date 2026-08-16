@@ -31,6 +31,8 @@ type Manifest struct {
 
 func manifestKey(key string) string { return key + "/manifest" }
 
+func metadataKey(key string) string { return key + "/metadata" }
+
 func chunkKey(objectKey string, index int) string {
 	return fmt.Sprintf("%s/chunks/%d", objectKey, index)
 }

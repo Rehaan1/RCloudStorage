@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"rcloudstorage/internal/api"
@@ -9,15 +10,24 @@ import (
 )
 
 func main() {
-	backend := storage.NewMemoryBackend()
-	metaStore := storage.NewMemoryMetadataStore()
+	dataDir := flag.String("data-dir", "./data", "directory for object files")
+	addr := flag.String("addr", ":8080", "HTTP listen address")
+	
+	flag.Parse()
+	
+	backend, err := storage.NewDiskBackend(*dataDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// ChunkSize is 0 as it is unused until we add
-	// support for streaming of large files
+	metaStore, err := storage.NewDiskMetadataStore(*dataDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	svc := service.New(backend, metaStore, 4*1024*1024)
-
 	router := api.NewRouter(svc)
-
-	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", router))
+	
+	log.Printf("listening on %s (data-dir=%s)", *addr, *dataDir)
+	log.Fatal(http.ListenAndServe(*addr, router))
 }
