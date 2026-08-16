@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,4 +56,50 @@ func (d *DiskBackend) pathFor(key string) (string, error) {
 
 	// TODO@mazidrehaan: SymLink protection pending to be added.
 	return full, nil
+}
+
+func (d *DiskBackend) Put(key string, r io.Reader) error {
+	finalPath, err := d.pathFor(key)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(finalPath), ".tmp-*")
+	if err != nil {
+		return err
+	}
+
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		tmp.Close()
+		return err
+	}
+
+	// NOTE@mazidrehaan: Sync is used to flush data from in memory 
+	// to the disk.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpName, finalPath); err == nil {
+		return nil
+	}
+
+	// NOTE@mazidrehaan: In windows, unlike linux, rename cannot replace an existing file.
+	// so we have to remove the existing file first.
+	if rmErr := os.Remove(finalPath); rmErr != nil && !os.IsNotExist(rmErr) {
+		return err
+	}
+	return os.Rename(tmpName, finalPath)
 }
