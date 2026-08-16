@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"slices"
 )
 
 func TestPathFor_StaysUnderRoot(t *testing.T) {
@@ -131,5 +132,82 @@ func TestDiskBackend_GetMissing(t *testing.T) {
 	_, err = d.Get("no/such/key")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func TestDiskBackend_Delete(t *testing.T) {
+	d, err := NewDiskBackend(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.Put("bob", bytes.NewReader([]byte("Hello World"))); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := d.Delete("bob"); err != nil {
+		t.Fatal(err)
+	}
+	
+	_, err = d.Get("bob")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+
+	// idempotent
+	if err := d.Delete("bob"); err != nil {
+		t.Fatalf("second Delete: %v", err)
+	}
+}
+
+func TestDiskBackend_List(t *testing.T) {
+	tests := []struct {
+		name   string
+		seed   []string
+		prefix string
+		want   []string
+	}{
+		{
+			name:   "filters by prefix",
+			seed:   []string{"photos/a.jpg", "photos/b.jpg", "docs/readme.txt"},
+			prefix: "photos/",
+			want:   []string{"photos/a.jpg", "photos/b.jpg"},
+		},
+		{
+			name:   "empty prefix matches everything",
+			seed:   []string{"c.txt", "a.txt", "b.txt"},
+			prefix: "",
+			want:   []string{"a.txt", "b.txt", "c.txt"},
+		},
+		{
+			name:   "no matches returns empty",
+			seed:   []string{"foo.txt"},
+			prefix: "nomatch/",
+			want:   []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := NewDiskBackend(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for _, key := range tt.seed {
+				if err := d.Put(key, bytes.NewReader([]byte("data"))); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := d.List(tt.prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

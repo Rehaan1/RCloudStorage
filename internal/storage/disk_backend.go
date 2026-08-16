@@ -5,8 +5,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+var _ StorageBackend = (*DiskBackend)(nil)
 
 type DiskBackend struct {
 	root string
@@ -118,4 +121,53 @@ func (d *DiskBackend) Get(key string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+func (d *DiskBackend) Delete(key string) error {
+	path, err := d.pathFor(key)
+	if err != nil {
+		return err
+	}
+
+	err = os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func (d *DiskBackend) List(prefix string) ([]string, error) {
+	keys := make([]string, 0)
+	err := filepath.WalkDir(d.root, func(path string, de os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if de.IsDir() {
+			return nil
+		}
+
+		if strings.HasPrefix(de.Name(), ".tmp-") {
+			return nil
+		}
+
+		rel, err := filepath.Rel(d.root, path)
+		if err != nil {
+			return err
+		}
+
+		key := filepath.ToSlash(rel)
+		if strings.HasPrefix(key, prefix) {
+			keys = append(keys, key)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	
+	sort.Strings(keys)
+	return keys, nil
 }
