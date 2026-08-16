@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-var _ StorageBackend = (*DiskBackend)(nil)
-
 type DiskBackend struct {
 	root string
 }
@@ -26,7 +24,32 @@ func NewDiskBackend(root string) (*DiskBackend, error) {
 		return nil, err
 	}
 
-	return &DiskBackend{root: abs}, nil
+	d := &DiskBackend{root: abs}
+	if err := d.removeOrphanTemps(); err != nil {
+		return nil, err
+    }
+    
+	return d, nil
+}
+
+// removeOrphanTemps removes all temporary files that are not associated with any object on startup.
+// This is to prevent the accumulation of temporary files that are not needed.
+func (d *DiskBackend) removeOrphanTemps() error {
+	return filepath.WalkDir(d.root, func(path string, de os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if de.IsDir() {
+			return nil
+		}
+		
+		if strings.HasPrefix(de.Name(), ".tmp-") {
+			return os.Remove(path)
+		}
+		
+		return nil
+	})
 }
 
 // pathFor maps an object key to a path under root.
@@ -167,7 +190,7 @@ func (d *DiskBackend) List(prefix string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	sort.Strings(keys)
 	return keys, nil
 }

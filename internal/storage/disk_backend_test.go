@@ -211,3 +211,33 @@ func TestDiskBackend_List(t *testing.T) {
 		})
 	}
 }
+
+func TestNewDiskBackend_RemovesOrphanTemps(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "obj", "chunks")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	orphan := filepath.Join(nested, ".tmp-orphan")
+	if err := os.WriteFile(orphan, []byte("leftover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	
+	keep := filepath.Join(dir, "keep.txt")
+	if err := os.WriteFile(keep, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewDiskBackend(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("orphan temp still exists: %v", err)
+	}
+	
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("real file was deleted: %v", err)
+	}
+}
