@@ -128,11 +128,11 @@ func (s *Service) Put(key string, r io.Reader) error {
 	// TODO@mazidrehaan: This assumes all errors are ErrNotFound,
 	// but with disk storage it could be anything. Handle that
 	// in the future.
-	if existing, err := s.Metadata.Get(key); err == nil {
+	if existing, err := s.Metadata.Get(metadataKey(key)); err == nil {
 		created = existing.CreatedAt
 	}
 
-	return s.Metadata.Put(key, storage.Metadata{
+	return s.Metadata.Put(metadataKey(key), storage.Metadata{
 		CreatedAt:  created,
 		ModifiedAt: time.Now(),
 	})
@@ -189,7 +189,7 @@ func (s *Service) Get(key string) (io.ReadCloser, Manifest, error) {
 
 	// TODO@mazidrehaan: Complete this later an use metadata for
 	// other info
-	meta, err := s.Metadata.Get(key)
+	meta, err := s.Metadata.Get(metadataKey(key))
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, Manifest{}, err
 	}
@@ -222,7 +222,7 @@ func (s *Service) Delete(key string) error {
 	manifestRecord, err := s.Backend.Get(manifestKey(key))
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return s.Metadata.Delete(key)
+			return s.Metadata.Delete(metadataKey(key))
 		}
 		return err
 	}
@@ -251,7 +251,7 @@ func (s *Service) Delete(key string) error {
 		return fmt.Errorf("deleting manifest: %w", err)
 	}
 
-	if err := s.Metadata.Delete(key); err != nil {
+	if err := s.Metadata.Delete(metadataKey(key)); err != nil {
 		return fmt.Errorf("deleting metadata: %w", err)
 	}
 

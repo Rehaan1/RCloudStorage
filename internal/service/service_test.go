@@ -59,7 +59,7 @@ func TestService_Get_SucceedsWhenMetadataIsMissing(t *testing.T) {
 		t.Fatalf("Put returned error: %v", err)
 	}
 
-	if err := metaStore.Delete("greeting"); err != nil {
+	if err := metaStore.Delete(metadataKey("greeting")); err != nil {
 		t.Fatalf("Delete metadata returned error: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestService_Delete(t *testing.T) {
 		t.Fatalf("Get after Delete returned %v, want ErrNotFound", err)
 	}
 
-	if _, err := metaStore.Get("goodbye.txt"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := metaStore.Get(metadataKey("goodbye.txt")); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("metadata Get after Delete returned %v, want ErrNotFound", err)
 	}
 }
@@ -141,7 +141,7 @@ func TestService_Put_PreservesCreatedAtOnOverwrite(t *testing.T) {
 		t.Fatalf("first Put returned error: %v", err)
 	}
 
-	firstMeta, err := metaStore.Get("greeting")
+	firstMeta, err := metaStore.Get(metadataKey("greeting"))
 	if err != nil {
 		t.Fatalf("metadata Get returned error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestService_Put_PreservesCreatedAtOnOverwrite(t *testing.T) {
 		t.Fatalf("second Put returned error: %v", err)
 	}
 
-	secondMeta, err := metaStore.Get("greeting")
+	secondMeta, err := metaStore.Get(metadataKey("greeting"))
 	if err != nil {
 		t.Fatalf("metadata Get returned error after overwrite: %v", err)
 	}
