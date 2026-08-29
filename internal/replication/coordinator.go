@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -113,13 +114,21 @@ func (c *Coordinator) Put(key string, r io.Reader) error {
 	)
 }
 
-// Get asks nodes concurrently. For this first version, all healthy replicas
-// should contain identical bytes, so it returns the first successful result
-// after obtaining R successful responses.
+// Get queries every node concurrently and returns data only after at least R
+// nodes return identical bytes.
+//
+// Querying all N nodes, rather than stopping after the first R responses, is
+// important. A stale node may respond first; it must not win over the value
+// held by the read quorum.
 func (c *Coordinator) Get(key string) (io.ReadCloser, error) {
 	type result struct {
 		data []byte
 		err  error
+	}
+
+	type candidate struct {
+		data  []byte
+		count int
 	}
 
 	results := make(chan result, len(c.Nodes))
@@ -136,8 +145,9 @@ func (c *Coordinator) Get(key string) (io.ReadCloser, error) {
 		}()
 	}
 
-	successes := 0
-	var firstData []byte
+	// A SHA-256 digest is a fixed-size, comparable Go value, so it can be a
+	// map key. We retain the original bytes to return once R replicas agree.
+	candidates := make(map[[sha256.Size]byte]candidate)
 
 	for range c.Nodes {
 		result := <-results
@@ -146,19 +156,23 @@ func (c *Coordinator) Get(key string) (io.ReadCloser, error) {
 			continue
 		}
 
-		if successes == 0 {
-			firstData = result.data
+		sum := sha256.Sum256(result.data)
+		match := candidates[sum]
+
+		if match.count == 0 {
+			match.data = result.data
 		}
 
-		successes++
+		match.count++
+		candidates[sum] = match
 
-		if successes >= c.R {
-			return io.NopCloser(bytes.NewReader(firstData)), nil
+		if match.count >= c.R {
+			return io.NopCloser(bytes.NewReader(match.data)), nil
 		}
 	}
 
 	return nil, fmt.Errorf(
-		"read quorum failed: fewer than R=%d nodes returned %q",
+		"read quorum failed: no matching response from R=%d nodes for %q",
 		c.R,
 		key,
 	)

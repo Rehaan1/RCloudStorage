@@ -293,3 +293,94 @@ func TestCoordinatorDeleteSucceedsWithWriteQuorum(t *testing.T) {
 		}
 	}
 }
+
+func TestCoordinatorGetReturnsDataSupportedByReadQuorum(t *testing.T) {
+	node1 := newTestNode(t)
+	node2 := newTestNode(t)
+	node3 := newTestNode(t)
+
+	current := []byte("current version")
+	stale := []byte("old version")
+
+	// This represents a successful W=2 write: nodes 1 and 2 have the
+	// newest data, while node 3 missed it and still has old data.
+	for i, node := range []*testNode{node1, node2} {
+		if err := node.backend.Put("manifest", bytes.NewReader(current)); err != nil {
+			t.Fatalf("seeding current data on node %d: %v", i+1, err)
+		}
+	}
+
+	if err := node3.backend.Put("manifest", bytes.NewReader(stale)); err != nil {
+		t.Fatalf("seeding stale data: %v", err)
+	}
+
+	coordinator, err := NewCoordinator(
+		[]*NodeClient{
+			node1.client(),
+			node2.client(),
+			node3.client(),
+		},
+		2,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("NewCoordinator() error = %v", err)
+	}
+
+	reader, err := coordinator.Get("manifest")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	defer reader.Close()
+
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("reading Get() result: %v", err)
+	}
+
+	if !bytes.Equal(got, current) {
+		t.Errorf("Get() = %q; want current quorum value %q", got, current)
+	}
+}
+
+func TestCoordinatorGetFailsWhenNoValueHasReadQuorum(t *testing.T) {
+	node1 := newTestNode(t)
+	node2 := newTestNode(t)
+	node3 := newTestNode(t)
+
+	for i, item := range []struct {
+		node *testNode
+		data string
+	}{
+		{node1, "version one"},
+		{node2, "version two"},
+		{node3, "version three"},
+	} {
+		if err := item.node.backend.Put("manifest", strings.NewReader(item.data)); err != nil {
+			t.Fatalf("seeding node %d: %v", i+1, err)
+		}
+	}
+
+	coordinator, err := NewCoordinator(
+		[]*NodeClient{
+			node1.client(),
+			node2.client(),
+			node3.client(),
+		},
+		2,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("NewCoordinator() error = %v", err)
+	}
+
+	_, err = coordinator.Get("manifest")
+
+	if err == nil {
+		t.Fatal("Get() error = nil; want read quorum failure")
+	}
+
+	if !strings.Contains(err.Error(), "read quorum failed") {
+		t.Errorf("Get() error = %q; want read quorum failure", err)
+	}
+}
