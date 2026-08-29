@@ -44,6 +44,12 @@ func main() {
 //
 // Each node owns a separate DiskBackend and DiskMetadataStore, located in its
 // own data directory. It exposes both public and coordinator-only HTTP routes.
+//
+// Normal clients must use the coordinator's public API, not a node's public
+// API: writing directly to one node bypasses quorum replication and can leave
+// the replicas with different data. The public node API is currently retained
+// for development and debugging; a production deployment should make it
+// private or expose only the /internal routes to the coordinator.
 func runNode(addr, dataDir string) {
 	backend, err := storage.NewDiskBackend(dataDir)
 	if err != nil {
@@ -68,8 +74,12 @@ func runNode(addr, dataDir string) {
 // writes a chunk or manifest, Coordinator replicates that raw record to the
 // node processes and waits for W acknowledgements.
 //
-// Metadata remains local to the coordinator for now. It is not part of the
-// replicated data path in this first quorum-replication module.
+// Metadata remains local to the coordinator for now. The nodes receive the
+// replicated chunks and manifest, but they do not run Service.Put and therefore
+// do not create metadata records. This is a known durability gap: losing the
+// coordinator's data directory loses CreatedAt/ModifiedAt values even though
+// the file bytes remain replicated.
+// TODO@mazidrehaan: Replicating metadata is future work.
 func runCoordinator(addr, dataDir, nodesFlag string, w, r int) {
 	nodes, err := parseNodes(nodesFlag)
 	if err != nil {
