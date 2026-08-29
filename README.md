@@ -27,6 +27,87 @@ For detailed API endpoint documentation and testing, see: [RCloudStorage API Doc
 
 Written in Go.
 
+## Current implementation
+
+The project has completed the first part of Phase 2: a local, multi-process
+quorum-replication prototype.
+
+- Files are split into 4 MB chunks. A manifest records the ordered chunks,
+  content type, size, and SHA-256 checksums.
+- `DiskBackend` persists objects with temp-file plus rename writes, while
+  `DiskMetadataStore` persists creation and modification timestamps.
+- Three independent node processes can store the same chunks and manifests in
+  separate data directories.
+- A coordinator implements `StorageBackend` and sends each chunk to every node
+  over HTTP. With `N=3`, `W=2`, and `R=2`, an upload succeeds when any two
+  nodes acknowledge it; a read requires two successful node responses.
+- Chunk checksums are verified when files are read.
+
+The coordinator is the public entry point. Nodes also currently expose the
+public API for local debugging, but clients should not use it: a direct node
+write bypasses replication. Node-to-coordinator replication uses the separate
+`/internal/objects/...` raw-storage API.
+
+> **Deployment note:** The public `/objects/...` routes on storage nodes exist
+> only because each node is currently run as a complete Phase 1 server, which
+> is helpful while developing and debugging locally. They must be closed off
+> before a real deployment (for example, by exposing only the internal API on
+> nodes or by placing nodes on a private network/firewall). Otherwise a client
+> could write directly to one node and bypass quorum replication. The
+> coordinator should be the only public-facing process.
+
+Metadata currently lives only in the coordinator data directory. The file
+chunks and manifest are replicated, but `CreatedAt` and `ModifiedAt` are not
+yet replicated; this is known future work.
+
+## Run a three-node cluster locally
+
+Run the commands below from the repository root in four separate PowerShell
+terminals. Use the coordinator at port `9000` for normal uploads and downloads.
+
+Start node 1:
+
+```powershell
+go run ./cmd/server -role node -addr :9001 -data-dir ./node1
+```
+
+Start node 2:
+
+```powershell
+go run ./cmd/server -role node -addr :9002 -data-dir ./node2
+```
+
+Start node 3:
+
+```powershell
+go run ./cmd/server -role node -addr :9003 -data-dir ./node3
+```
+
+Start the coordinator:
+
+```powershell
+go run ./cmd/server -role coordinator -addr :9000 -data-dir ./coordinator -nodes 'http://localhost:9001,http://localhost:9002,http://localhost:9003' -w 2 -r 2
+```
+
+Upload a file through the coordinator:
+
+```powershell
+curl.exe -i -X PUT --data-binary "@README.md" http://localhost:9000/objects/readme-copy
+```
+
+Download it again:
+
+```powershell
+curl.exe -i http://localhost:9000/objects/readme-copy
+```
+
+Run the automated checks:
+
+```powershell
+go test ./...
+go test -race ./...
+```
+
 ## Design principles
 
 - **Write-once, read-many.** Files aren't expected to be edited after upload — this simplifies versioning and conflict handling.
