@@ -15,15 +15,24 @@ import (
 // those records through Service again would chunk them a second time.
 func NewInternalRouter(backend storage.StorageBackend) http.Handler {
 	mux := http.NewServeMux()
-
-	// {key...} is a catch-all wildcard. It is essential because raw backend
-	// keys include slashes, for example: photo.jpg/chunks/0.
-	mux.HandleFunc("PUT /internal/objects/{key...}", handleInternalPut(backend))
-	mux.HandleFunc("GET /internal/objects/{key...}", handleInternalGet(backend))
-	mux.HandleFunc("DELETE /internal/objects/{key...}", handleInternalDelete(backend))
-	mux.HandleFunc("GET /internal/objects", handleInternalList(backend))
+	registerInternalRoutes(mux, backend)
 
 	return mux
+}
+
+func registerInternalRoutes(
+	mux *http.ServeMux,
+	backend storage.StorageBackend,
+) {
+	// {key...} accepts a key containing slashes, such as:
+	// holiday.mp4/chunks/0
+	mux.HandleFunc("PUT /internal/objects/{key...}", handleInternalPut(backend))
+	mux.HandleFunc("GET /internal/objects/{key...}", handleInternalGet(backend))
+	mux.HandleFunc(
+		"DELETE /internal/objects/{key...}",
+		handleInternalDelete(backend),
+	)
+	mux.HandleFunc("GET /internal/objects", handleInternalList(backend))
 }
 
 func handleInternalPut(backend storage.StorageBackend) http.HandlerFunc {
@@ -44,7 +53,6 @@ func handleInternalGet(backend storage.StorageBackend) http.HandlerFunc {
 		key := r.PathValue("key")
 
 		reader, err := backend.Get(key)
-
 		if errors.Is(err, storage.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
@@ -56,11 +64,7 @@ func handleInternalGet(backend storage.StorageBackend) http.HandlerFunc {
 		}
 		defer reader.Close()
 
-		if _, err := io.Copy(w, reader); err != nil {
-			// The response could already be partially written, so there is no
-			// safe HTTP error response left to send.
-			return
-		}
+		_, _ = io.Copy(w, reader)
 	}
 }
 
