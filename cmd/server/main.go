@@ -20,6 +20,8 @@ func main() {
 	writeQuorum := flag.Int("w", 2, "required successful node writes")
 	readQuorum := flag.Int("r", 2, "required successful node reads")
 
+	flag.Parse()
+
 	switch *role {
 	case "node":
 		runNode(*addr, *dataDir)
@@ -74,6 +76,8 @@ func runCoordinator(addr, dataDir, nodesFlag string, w, r int) {
 		log.Fatal(err)
 	}
 
+	// NOTE@mazidrehaan: Instead of using the Backend directly
+	// we are using the coordinator that coordinates the replication of data to multiple nodes.
 	backend, err := replication.NewCoordinator(nodes, w, r)
 	if err != nil {
 		log.Fatal(err)
