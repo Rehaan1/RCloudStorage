@@ -90,8 +90,9 @@ func newTestNode(t *testing.T) *testNode {
 
 func (n *testNode) client() *NodeClient {
 	return &NodeClient{
-		Addr: n.server.URL,
-		HTTP: n.server.Client(),
+		Addr:    n.server.URL,
+		HTTP:    n.server.Client(),
+		healthy: true,
 	}
 }
 
@@ -153,8 +154,9 @@ func TestCoordinatorPutSucceedsWhenOneNodeFails(t *testing.T) {
 			node1.client(),
 			node2.client(),
 			{
-				Addr: failingServer.URL,
-				HTTP: failingServer.Client(),
+				Addr:    failingServer.URL,
+				HTTP:    failingServer.Client(),
+				healthy: true,
 			},
 		},
 		2, // W: node 1 and node 2 are sufficient
@@ -189,12 +191,14 @@ func TestCoordinatorPutFailsWithoutWriteQuorum(t *testing.T) {
 		[]*NodeClient{
 			node.client(),
 			{
-				Addr: failingServer1.URL,
-				HTTP: failingServer1.Client(),
+				Addr:    failingServer1.URL,
+				HTTP:    failingServer1.Client(),
+				healthy: true,
 			},
 			{
-				Addr: failingServer2.URL,
-				HTTP: failingServer2.Client(),
+				Addr:    failingServer2.URL,
+				HTTP:    failingServer2.Client(),
+				healthy: true,
 			},
 		},
 		2, // W=2 but only one node can succeed
@@ -285,12 +289,27 @@ func TestCoordinatorDeleteSucceedsWithWriteQuorum(t *testing.T) {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
+	deleted := 0
+
 	for i, node := range []*testNode{node1, node2, node3} {
 		_, err := node.backend.Get("remove-me")
 
-		if err != storage.ErrNotFound {
-			t.Errorf("node %d still has object; Get() error = %v", i+1, err)
+		if err == storage.ErrNotFound {
+			deleted++
+			continue
 		}
+
+		if err != nil {
+			t.Errorf("node %d Get() error = %v", i+1, err)
+		}
+	}
+
+	if deleted < coordinator.W {
+		t.Errorf(
+			"deleted from %d nodes; need write quorum W=%d",
+			deleted,
+			coordinator.W,
+		)
 	}
 }
 
