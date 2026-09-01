@@ -10,6 +10,7 @@ import (
 	"rcloudstorage/internal/service"
 	"rcloudstorage/internal/storage"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -92,6 +93,8 @@ func runCoordinator(addr, dataDir, nodesFlag string, w, r int) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	backend.StartFailureDetection(2 * time.Second)
 
 	metadata, err := storage.NewDiskMetadataStore(dataDir)
 	if err != nil {

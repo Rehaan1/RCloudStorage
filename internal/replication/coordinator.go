@@ -80,6 +80,16 @@ func (c *Coordinator) Put(key string, r io.Reader) error {
 		return fmt.Errorf("reading object before replication: %w", err)
 	}
 
+	nodes := c.healthyNodes()
+
+	if len(nodes) < c.W {
+		return fmt.Errorf(
+			"write quorum failed: only %d healthy nodes available; need W=%d",
+			len(nodes),
+			c.W,
+		)
+	}
+
 	// NOTE@mazidrehaan: We use a buffered channel to avoid goroutine leaks. If we
 	// used an unbuffered channel, then if the first W nodes acked, the rest of
 	// the goroutines would block forever trying to send their result to the
@@ -87,7 +97,7 @@ func (c *Coordinator) Put(key string, r io.Reader) error {
 	// exit, even if the main goroutine has already returned.
 	results := make(chan error, len(c.Nodes))
 
-	for _, node := range c.Nodes {
+	for _, node := range nodes {
 		node := node
 
 		go func() {
@@ -102,7 +112,7 @@ func (c *Coordinator) Put(key string, r io.Reader) error {
 
 	// NOTE@mazidrehaan: We only wait for W successful acks. If we get W acks,
 	// we return early and don't wait for the rest of the nodes to respond.
-	for range c.Nodes {
+	for range nodes {
 		if err := <-results; err == nil {
 			acked++
 
@@ -115,7 +125,7 @@ func (c *Coordinator) Put(key string, r io.Reader) error {
 	return fmt.Errorf(
 		"write quorum failed: only %d/%d nodes acknowledged; need W=%d",
 		acked,
-		len(c.Nodes),
+		len(nodes),
 		c.W,
 	)
 }
@@ -453,4 +463,129 @@ func (n *NodeClient) startHeartbeat(
 			check()
 		}
 	}()
+}
+
+func (c *Coordinator) StartFailureDetection(interval time.Duration) {
+	for _, node := range c.Nodes {
+		node := node
+
+		node.startHeartbeat(interval, func() {
+			go func() {
+				if err := c.antiEntropy(node); err != nil {
+					log.Printf(
+						"anti-entropy for recovered node %s failed: %v",
+						node.Addr,
+						err,
+					)
+				}
+			}()
+		})
+	}
+}
+
+func (c *Coordinator) healthyNodes() []*NodeClient {
+	healthy := make([]*NodeClient, 0, len(c.Nodes))
+
+	for _, node := range c.Nodes {
+		if node.isHealthy() {
+			healthy = append(healthy, node)
+		}
+	}
+
+	return healthy
+}
+
+func (c *Coordinator) firstHealthyOther(recovered *NodeClient) (*NodeClient, error) {
+	for _, node := range c.Nodes {
+		if node != recovered && node.isHealthy() {
+			return node, nil
+		}
+	}
+
+	return nil, errors.New(
+		"anti-entropy failed: no other healthy node is available",
+	)
+}
+
+func diff(source, destination []string) []string {
+	destinationSet := make(map[string]struct{}, len(destination))
+
+	for _, key := range destination {
+		destinationSet[key] = struct{}{}
+	}
+
+	missing := make([]string, 0)
+
+	for _, key := range source {
+		if _, exists := destinationSet[key]; !exists {
+			missing = append(missing, key)
+		}
+	}
+
+	return missing
+}
+
+func (c *Coordinator) antiEntropy(recovered *NodeClient) error {
+	healthy, err := c.firstHealthyOther(recovered)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), nodeTimeout)
+	theirKeys, err := healthy.list(ctx, "")
+	cancel()
+	if err != nil {
+		return fmt.Errorf("listing healthy node %s: %w", healthy.Addr, err)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), nodeTimeout)
+	recoveredKeys, err := recovered.list(ctx, "")
+	cancel()
+	if err != nil {
+		return fmt.Errorf(
+			"listing recovered node %s: %w",
+			recovered.Addr,
+			err,
+		)
+	}
+
+	missing := diff(theirKeys, recoveredKeys)
+
+	log.Printf(
+		"anti-entropy: syncing %d missing records to %s",
+		len(missing),
+		recovered.Addr,
+	)
+
+	for _, key := range missing {
+		ctx, cancel := context.WithTimeout(context.Background(), nodeTimeout)
+		data, err := healthy.get(ctx, key)
+		cancel()
+
+		if err != nil {
+			log.Printf(
+				"anti-entropy: reading %q from %s failed: %v",
+				key,
+				healthy.Addr,
+				err,
+			)
+			continue
+		}
+
+		ctx, cancel = context.WithTimeout(context.Background(), nodeTimeout)
+		err = recovered.put(ctx, key, data)
+		cancel()
+
+		if err != nil {
+			log.Printf(
+				"anti-entropy: writing %q to %s failed: %v",
+				key,
+				recovered.Addr,
+				err,
+			)
+			continue
+		}
+	}
+
+	return nil
 }
