@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"rcloudstorage/internal/storage"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +23,9 @@ const nodeTimeout = 5 * time.Second
 type NodeClient struct {
 	Addr string
 	HTTP *http.Client
+
+	mu      sync.RWMutex
+	healthy bool
 }
 
 func NewNodeClient(addr string) *NodeClient {
@@ -29,6 +34,7 @@ func NewNodeClient(addr string) *NodeClient {
 		HTTP: &http.Client{
 			Timeout: nodeTimeout,
 		},
+		healthy: true,
 	}
 }
 
@@ -382,4 +388,69 @@ func (n *NodeClient) rawObjectURL(key string) string {
 	// PathEscape keeps a key as one URL path value rather than allowing
 	// special URL characters to change the request.
 	return n.Addr + "/internal/objects/" + url.PathEscape(key)
+}
+
+func (n *NodeClient) isHealthy() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	return n.healthy
+}
+
+func (n *NodeClient) startHeartbeat(
+	interval time.Duration,
+	onRecovery func(),
+) {
+	check := func() {
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			2*time.Second,
+		)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			n.Addr+"/health",
+			nil,
+		)
+		if err != nil {
+			log.Printf("creating health request for %s: %v", n.Addr, err)
+			return
+		}
+
+		resp, err := n.HTTP.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		nowHealthy := err == nil &&
+			resp != nil &&
+			resp.StatusCode == http.StatusOK
+
+		n.mu.Lock()
+		wasHealthy := n.healthy
+		n.healthy = nowHealthy
+		n.mu.Unlock()
+
+		if !wasHealthy && nowHealthy {
+			log.Printf("node recovered: %s", n.Addr)
+			onRecovery()
+		}
+
+		if wasHealthy && !nowHealthy {
+			log.Printf("node became unhealthy: %s", n.Addr)
+		}
+	}
+
+	go func() {
+		check() // Check immediately; do not wait for the first ticker cycle.
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			check()
+		}
+	}()
 }
