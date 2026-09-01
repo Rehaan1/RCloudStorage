@@ -39,6 +39,8 @@ func NewNodeRouter(
 	registerPublicRoutes(mux, svc)
 	registerInternalRoutes(mux, backend)
 
+	mux.HandleFunc("GET /health", handleHealth)
+
 	return mux
 }
 
@@ -47,4 +49,8 @@ func registerPublicRoutes(mux *http.ServeMux, svc *service.Service) {
 	mux.HandleFunc("PUT /objects/{key}", handlePut(svc))
 	mux.HandleFunc("DELETE /objects/{key}", handleDelete(svc))
 	mux.HandleFunc("GET /objects", handleList(svc))
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
 }
